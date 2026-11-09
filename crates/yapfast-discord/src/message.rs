@@ -44,6 +44,9 @@ const USER_INSTALL: &str = "1";
 
 /// The message flag that hides its embeds.
 const SUPPRESS_EMBEDS: u64 = 1 << 2;
+/// The message flag that marks a voice message: its attachment is playable audio.
+pub(crate) const IS_VOICE_MESSAGE: u64 = 1 << 13;
+
 /// The message flags Discord's client forwards a message with: crossposts,
 /// hidden embeds, threads, @silent, voice messages, forwards and the like,
 /// but not ephemeral or loading messages, or flags it doesn't know.
@@ -96,7 +99,7 @@ pub struct Page {
     pub newest: bool,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Message {
     pub id: String,
     pub channel_id: String,
@@ -309,7 +312,7 @@ impl Reply {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Attachment {
     pub name: String,
     pub size: Option<u64>,
@@ -340,6 +343,15 @@ pub struct Attachment {
     pub shown: Shown,
     /// Marked as a spoiler: by a name starting `SPOILER_`, or by its flags.
     pub spoiler: bool,
+    /// A voice message: the message has the voice flag and this is its `.ogg`.
+    #[serde(default)]
+    pub voice: bool,
+    /// Its waveform, as Discord sends it: 128 samples, each 0..1.
+    #[serde(default)]
+    pub waveform: Vec<f32>,
+    /// How long it plays, in milliseconds, when the sender said.
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
 }
 
 /// Where a message's picture shows.
@@ -639,6 +651,9 @@ pub fn parse(value: &Value) -> Option<Message> {
             let image = kind.starts_with("image/");
             // The media proxy makes a video's poster from its first frame.
             let video = kind.starts_with("video/");
+            let voice = shown["flags"].as_u64().unwrap_or_default() & IS_VOICE_MESSAGE != 0
+                && (kind == "audio/ogg"
+                    || attachment["filename"].as_str().is_some_and(|n| n.ends_with(".ogg")));
             let url: Arc<str> = attachment["url"].as_str()?.into();
             let name = attachment["filename"].as_str()?;
             Some(Attachment {
@@ -665,6 +680,16 @@ pub fn parse(value: &Value) -> Option<Message> {
                 shown: Shown::Message,
                 spoiler: name.starts_with("SPOILER_")
                     || attachment["flags"].as_u64().unwrap_or_default() & IS_SPOILER != 0,
+                voice,
+                waveform: attachment["waveform"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|v| v.as_f64().map(|f| f as f32))
+                    .collect(),
+                duration_ms: attachment["duration_secs"]
+                    .as_f64()
+                    .map(|secs| (secs * 1000.0) as u64),
             })
         })
         .collect::<Vec<_>>();
@@ -727,6 +752,9 @@ pub fn parse(value: &Value) -> Option<Message> {
             animated: false,
             shown: Shown::Sticker,
             spoiler: false,
+            voice: false,
+            waveform: Vec::new(),
+            duration_ms: None,
         });
     }
     attachments.extend(components.media);

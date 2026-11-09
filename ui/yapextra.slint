@@ -1,0 +1,248 @@
+// Yapextra: the plugin host's face. A plugin list with enable switches, and
+// a detail page per plugin — the message logger first. Visual only: Rust
+// owns the state, same contract as SettingsSwitch/Choices in settings.slint.
+
+import { Theme, Middle, Label, PopupMotion } from "theme.slint";
+import { ClientStyle } from "yapfast/style.slint";
+import { ActionButton, IconButton, TextField } from "controls.slint";
+import { ScrollView } from "scrollview.slint";
+import { SettingsFrame, SettingsTitle, SettingsHeading, SettingsSwitch, SettingsCard } from "settings.slint";
+import { SettingsRow } from "settings.slint";
+
+// One plugin in the list. `id` is the stable plugin key (e.g. "message-logger").
+export struct YapextraPlugin {
+    id: string,
+    name: string,
+    description: string,
+    version: string,
+    enabled: bool,
+    running: bool,
+    has-settings: bool,
+}
+
+export component YapextraPluginRow inherits Rectangle {
+    in-out property <bool> hovered;
+    in property <string> plugin-id;
+    in property <string> name;
+    in property <string> description;
+    in property <string> version;
+    in property <bool> enabled;
+    in property <bool> running;
+    height: 64px;
+    background: root.hovered ? Theme.hover : transparent;
+    border-radius: 8px;
+    accessible-role: button;
+    accessible-label: name + (enabled ? ", enabled" : ", disabled");
+    callback opened(string);
+    callback toggled(string, bool);
+    HorizontalLayout {
+        padding-left: 12px; padding-right: 12px; spacing: 12px;
+        Middle {
+            VerticalLayout {
+                alignment: center; spacing: 2px; horizontal-stretch: 1;
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: root.name; color: Theme.text; font-size: 15px; font-weight: 700; vertical-alignment: center; overflow: elide; }
+                    if root.version != "": Text { text: "v" + root.version; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+                    if root.running: Rectangle {
+                        height: 18px; border-radius: 9px; background: Theme.live;
+                        HorizontalLayout { padding-left: 8px; padding-right: 8px; Text { text: "RUNNING"; color: Theme.on-danger; font-size: 10px; font-weight: 700; vertical-alignment: center; } }
+                    }
+                }
+                Text { text: root.description; color: Theme.muted; font-size: 13px; overflow: elide; }
+            }
+        }
+        Middle {
+            SettingsSwitch {
+                text: "";
+                checked: root.enabled;
+                toggled(on) => { root.toggled(root.plugin-id, on); }
+            }
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        changed has-hover => { root.hovered = self.has-hover; }
+        // Toggle binds; hover is UI-only state of the row itself.
+        clicked => { root.opened(root.plugin-id); }
+    }
+    accessible-action-default => { root.opened(root.plugin-id); }
+}
+
+export component YapextraListPage inherits VerticalLayout {
+    in property <[YapextraPlugin]> plugins;
+    in property <bool> busy;
+    in property <string> note;
+    callback opened(string);
+    callback toggled(string, bool);
+    callback reload;
+    spacing: 16px;
+    SettingsTitle { text: "Yapextra"; }
+    Label { text: "Plugins extend Yapextra. They run locally, on your machine only — nothing here sends your messages anywhere but the file you choose."; }
+    if root.note != "": Label { text: root.note; }
+    HorizontalLayout {
+        spacing: 8px;
+        ActionButton { text: "Reload plugins"; icon: @image-url("icons/refresh-cw.svg"); enabled: !root.busy; clicked => { root.reload(); } }
+        Rectangle { horizontal-stretch: 1; }
+    }
+    SettingsHeading { text: "PLUGINS"; }
+    if root.plugins.length == 0: Label { text: "No plugins yet. Enable one below, or drop a plugin into the plugins folder and reload."; }
+    for plugin in root.plugins: YapextraPluginRow {
+        plugin-id: plugin.id;
+        name: plugin.name;
+        description: plugin.description;
+        version: plugin.version;
+        enabled: plugin.enabled;
+        running: plugin.running;
+        opened(id) => { root.opened(id); }
+        toggled(id, on) => { root.toggled(id, on); }
+    }
+}
+
+// The message logger: the first plugin. Streams every message it sees to a
+// JSONL file on disk, as it is made — nothing is kept in memory.
+export component MessageLoggerSettings inherits VerticalLayout {
+    in-out property <bool> enabled;
+    in-out property <bool> log-edits;
+    in-out property <bool> log-deletes;
+    in-out property <bool> log-dms;
+    // Format: 0 JSONL, 1 plain text.
+    in-out property <int> format;
+    in property <string> file-path;
+    in property <string> status;
+    in property <bool> busy;
+    callback toggled(bool);
+    callback edited(bool, bool, bool); // edits, deletes, dms
+    callback format-chosen(int);
+    callback choose-file;
+    callback open-file;
+    callback clear-file;
+    spacing: 16px;
+    SettingsTitle { text: "Message Logger"; }
+    Label { text: "Writes every message Yapfast receives to a file on disk, line by line, as it arrives. It keeps nothing in memory. The file is plain text: anyone who can read your machine can read it."; }
+    if root.status != "": Label { text: root.status; }
+    SettingsSwitch {
+        text: "Enable message logger";
+        description: "Off by default. With it off, nothing is written.";
+        checked: root.enabled;
+        toggled(on) => { root.toggled(on); }
+    }
+    SettingsSwitch {
+        text: "Log edits";
+        description: "Write a line when a message is edited, with the new text.";
+        checked: root.log-edits;
+        enabled: root.enabled;
+        toggled(on) => { root.edited(on, root.log-deletes, root.log-dms); }
+    }
+    SettingsSwitch {
+        text: "Log deletes";
+        description: "Write a line when a message is deleted, with the last known text.";
+        checked: root.log-deletes;
+        enabled: root.enabled;
+        toggled(on) => { root.edited(root.log-edits, on, root.log-dms); }
+    }
+    SettingsSwitch {
+        text: "Log DMs";
+        description: "Also log direct and group messages, not just servers.";
+        checked: root.log-dms;
+        enabled: root.enabled;
+        toggled(on) => { root.edited(root.log-edits, root.log-deletes, on); }
+    }
+    SettingsHeading { text: "FILE"; }
+    HorizontalLayout {
+        spacing: 8px;
+        TextField {
+            text: root.file-path;
+            placeholder: "messages.jsonl";
+            label: "Log file path";
+            enabled: root.enabled;
+            horizontal-stretch: 1;
+        }
+        ActionButton { text: "Choose"; enabled: root.enabled && !root.busy; clicked => { root.choose-file(); } }
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        ActionButton { text: "Open file"; enabled: root.enabled && !root.busy; clicked => { root.open-file(); } }
+        ActionButton { text: "Clear file"; danger: true; enabled: root.enabled && !root.busy; clicked => { root.clear-file(); } }
+        Rectangle { horizontal-stretch: 1; }
+    }
+    SettingsHeading { text: "FORMAT"; }
+    HorizontalLayout {
+        spacing: 8px;
+        Text { text: root.format == 0 ? "JSONL — one object per line, one field per thing." : "Plain text — one line per message, easy to grep."; color: Theme.muted; font-size: 13px; vertical-alignment: center; horizontal-stretch: 1; wrap: word-wrap; }
+    }
+}
+
+// What the window shows while Yapextra is open: list or a plugin's page, in
+// a SettingsFrame on a SettingsCard like SettingsScreen, so Escape and the
+// backdrop behave the same.
+export component YapextraScreen inherits Rectangle {
+    // 0 list, 1 message logger.
+    in-out property <int> page;
+    in property <[YapextraPlugin]> plugins;
+    in property <string> selected-plugin;
+    in property <bool> busy;
+    in property <string> note;
+    in-out property <bool> logger-enabled;
+    in-out property <bool> logger-edits;
+    in-out property <bool> logger-deletes;
+    in-out property <bool> logger-dms;
+    in-out property <int> logger-format;
+    in property <string> logger-path;
+    in property <string> logger-status;
+    in property <float> motion: 1;
+    callback close;
+    callback plugin-opened(string);
+    callback plugin-toggled(string, bool);
+    callback reload-plugins;
+    callback back;
+    callback logger-toggled(bool);
+    callback logger-edited(bool, bool, bool);
+    callback logger-format-chosen(int);
+    callback logger-choose-file;
+    callback logger-open-file;
+    callback logger-clear-file;
+    SettingsCard {
+        motion: root.motion;
+        close => { root.close(); }
+        SettingsFrame {
+            discord-layout: ClientStyle.enabled;
+            page-title: ClientStyle.enabled ? "Yapextra" : root.page == 1 ? "Message Logger" : "Yapextra";
+            rows: [
+                { heading: true, text: "YAPEXTRA" },
+                { text: "Plugins", icon: @image-url("icons/settings.svg"), id: 0 },
+                { text: "Message Logger", icon: @image-url("icons/history.svg"), id: 1 },
+            ];
+            selected: root.page;
+            chose(id) => {
+                if id == 0 { root.page = 0; root.back(); }
+                if id == 1 { root.page = 1; root.plugin-opened("message-logger"); }
+            }
+            close => { root.close(); }
+            if root.page == 0: YapextraListPage {
+                plugins: root.plugins;
+                busy: root.busy;
+                note: root.note;
+                opened(id) => { root.page = 1; root.plugin-opened(id); }
+                toggled(id, on) => { root.plugin-toggled(id, on); }
+                reload => { root.reload-plugins(); }
+            }
+            if root.page == 1: MessageLoggerSettings {
+                enabled: root.logger-enabled;
+                log-edits: root.logger-edits;
+                log-deletes: root.logger-deletes;
+                log-dms: root.logger-dms;
+                format: root.logger-format;
+                file-path: root.logger-path;
+                status: root.logger-status;
+                busy: root.busy;
+                toggled(on) => { root.logger-toggled(on); }
+                edited(e, d, dm) => { root.logger-edited(e, d, dm); }
+                format-chosen(index) => { root.logger-format-chosen(index); }
+                choose-file => { root.logger-choose-file(); }
+                open-file => { root.logger-open-file(); }
+                clear-file => { root.logger-clear-file(); }
+            }
+        }
+    }
+}

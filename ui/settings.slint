@@ -381,6 +381,7 @@ export component SettingsScreen inherits Rectangle {
         { text: "Discord", icon: @image-url("icons/discord.svg"), id: 4 },
         { text: "Game activity", icon: @image-url("icons/play.svg"), id: 8 },
         { text: "Advanced", icon: @image-url("icons/settings.svg"), id: 6 },
+        { text: "Yapextra", icon: @image-url("icons/settings.svg"), id: 9 },
     ];
     property <[SettingsRow]> without-discord: [
         { heading: true, text: "SETTINGS" },
@@ -391,6 +392,7 @@ export component SettingsScreen inherits Rectangle {
         { text: "Notifications", icon: @image-url("icons/bell.svg"), id: 3 },
         { text: "Sounds", icon: @image-url("icons/volume-2.svg"), id: 5 },
         { text: "Advanced", icon: @image-url("icons/settings.svg"), id: 6 },
+        { text: "Yapextra", icon: @image-url("icons/settings.svg"), id: 9 },
     ];
     SettingsCard {
         motion: root.motion;
@@ -401,7 +403,7 @@ export component SettingsScreen inherits Rectangle {
             page-title: root.settings-section == 0 ? "My Account" : root.settings-section == 1 ? "Voice & Video"
                 : root.settings-section == 2 ? "Messages" : root.settings-section == 3 ? "Notifications"
                 : root.settings-section == 4 ? "Discord" : root.settings-section == 5 ? "Sounds"
-                : root.settings-section == 6 ? "Advanced" : root.settings-section == 7 ? "Appearance" : "Game Activity";
+                : root.settings-section == 6 ? "Advanced" : root.settings-section == 7 ? "Appearance" : root.settings-section == 9 ? "Yapextra" : "Game Activity";
             account-name: root.account-name; account-initial: root.account-initial;
             account-tint: root.account-tint; account-picture: root.account-picture;
             with-discord: root.discord-build && !root.preview;

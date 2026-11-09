@@ -518,7 +518,7 @@ component VideoCell inherits Rectangle {
 }
 
 /// A file, or an image without a preview, as a card.
-export struct FileCell { index: int, name: string, detail: string }
+export struct FileCell { index: int, name: string, detail: string, voice: bool, waveform: [float], duration: string }
 /// A block of a message's or card's text, as Discord's client lays them
 /// out: Markdown (0), a heading (1 to 3), subtext (4) or fenced code (5).
 /// Slint's Markdown draws none but the first. A `quoted` block is behind a
@@ -1500,15 +1500,86 @@ export component MessageStickers inherits HorizontalLayout {
     Rectangle { horizontal-stretch: 1; }
 }
 
+// A voice message: play button, duration and waveform, or as a file if the
+// waveform is empty. VoicePlayer in this file owns the playback state.
+export component VoiceMessageCard inherits HorizontalLayout {
+    in property <FileCell> file;
+    in property <bool> preview;
+    in property <string> delivery;
+    in property <string> item;
+    property <bool> active: VoicePlayer.item == root.item && VoicePlayer.index == root.file.index;
+    padding-top: 4px;
+    Rectangle {
+        min-height: voice-card.preferred-height; max-width: 432px; horizontal-stretch: 100;
+        background: Theme.sidebar; border-color: Theme.edge; border-width: 1px; border-radius: 8px;
+        voice-card := HorizontalLayout {
+            padding: 12px; padding-right: 8px; spacing: 12px;
+            IconButton {
+                size: 36px; glyph: 18px; radius: 18px;
+                fill: Theme.accent;
+                icon: root.active && VoicePlayer.playing ? @image-url("icons/pause.svg") : @image-url("icons/play.svg");
+                label: root.active && VoicePlayer.playing ? "Pause voice message" : "Play voice message";
+                enabled: !root.preview && root.delivery == "";
+                clicked => {
+                    if root.active { VoicePlayer.toggle(); }
+                    else { VoicePlayer.play(root.item, root.file.index); }
+                }
+            }
+            VerticalLayout {
+                alignment: center; horizontal-stretch: 1; spacing: 4px;
+                // Waveform bars, 128 of them; where none came, a single bar.
+                HorizontalLayout {
+                    height: 28px; spacing: 1px; alignment: center;
+                    for sample in root.file.waveform: Rectangle {
+                        visible: root.file.waveform.length > 0;
+                        width: 2px; height: 4px + clamp(sample, 0, 1) * 24px;
+                        border-radius: 1px;
+                        background: root.active ? Theme.accent : Theme.faint;
+                    }
+                    if root.file.waveform.length == 0: Rectangle {
+                        height: 4px; horizontal-stretch: 1; border-radius: 2px; background: Theme.faint;
+                    }
+                }
+                if root.file.duration != "": Text { text: root.file.duration; color: Theme.muted; font-size: 12px; }
+            }
+            IconButton {
+                icon: @image-url("icons/download.svg"); label: "Save " + root.file.name;
+                enabled: !root.preview && root.delivery == "";
+                clicked => { VoicePlayer.save(root.item, root.file.index); }
+            }
+        }
+    }
+    Rectangle { horizontal-stretch: 1; }
+}
+
+export global VoicePlayer {
+    in property <string> item;
+    in property <int> index: -1;
+    in property <bool> playing;
+    in property <bool> loading;
+    in property <string> error;
+    callback play(string, int);
+    callback toggle();
+    callback save(string, int);
+    callback stop();
+}
+
 // A file, or an image without a preview, as a card with a way to save it.
 export component FileCard inherits HorizontalLayout {
     in property <FileCell> file;
     in property <bool> preview;
     /// The message's delivery state, empty once it's sent.
     in property <string> delivery;
+    in property <string> item;
     callback save;
     padding-top: 4px;
-    Rectangle {
+    if root.file.voice: VoiceMessageCard {
+        file: root.file;
+        preview: root.preview;
+        delivery: root.delivery;
+        item: root.item;
+    }
+    if !root.file.voice: Rectangle {
         min-height: file-card.preferred-height; max-width: 432px; horizontal-stretch: 100;
         background: Theme.sidebar; border-color: Theme.edge; border-width: 1px; border-radius: 8px;
         file-card := HorizontalLayout {
@@ -1851,7 +1922,7 @@ export component CardView inherits HorizontalLayout {
                 }
                 // Only a media row has files.
                 for file in row.files: FileCard {
-                    file: file; preview: root.preview; delivery: root.delivery;
+                    file: file; preview: root.preview; delivery: root.delivery; item: root.item;
                     save => { root.save-attachment(root.item, file.index); }
                 }
                 // With the layout's spacing either side, a small gap is 16
@@ -2559,7 +2630,7 @@ export component MessageContent inherits VerticalLayout {
                 open(index, x, y, width, height) => { root.open-sticker(message.item, index, x, y, width, height); }
             }
             for file in message.files: FileCard {
-                file: file; preview: root.preview; delivery: message.delivery;
+                file: file; preview: root.preview; delivery: message.delivery; item: message.item;
                 save => { root.save-attachment(message.item, file.index); }
             }
             if message.hidden-card != "": Text {

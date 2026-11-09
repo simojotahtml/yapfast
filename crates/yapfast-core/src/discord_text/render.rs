@@ -127,6 +127,9 @@ pub(super) fn found(
                 placement: Placement::Message,
                 spoiler: attachment.spoiler,
                 video: attachment.video_url.is_some(),
+                voice: attachment.voice,
+                waveform: attachment.waveform.clone(),
+                duration_ms: attachment.duration_ms,
                 gif: super::gifs::favorite_gif(attachment),
                 url: Some(
                     attachment

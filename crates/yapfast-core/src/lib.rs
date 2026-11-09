@@ -83,6 +83,8 @@ pub mod stream_worker;
 pub mod video;
 #[cfg(feature = "discord")]
 pub mod video_player;
+#[cfg(feature = "discord")]
+pub mod voice_message_playback;
 pub mod voice;
 #[cfg(feature = "matrix")]
 pub mod voice_demo;

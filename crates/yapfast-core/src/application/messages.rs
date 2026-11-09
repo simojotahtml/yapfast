@@ -282,6 +282,26 @@ impl Application {
         })]
     }
 
+    pub(super) fn play_voice_message(
+        &mut self,
+        item: String,
+        index: usize,
+    ) -> Vec<Effect> {
+        let voice = self
+            .state
+            .message(&item)
+            .and_then(|message| message.attachments.get(index))
+            .is_some_and(|attachment| attachment.voice);
+        let Some(room) = self.state.room_of(&item).cloned().filter(|_| voice) else {
+            return vec![];
+        };
+        vec![Effect::Backend(Command::PlayVoiceMessage {
+            room,
+            item,
+            index,
+        })]
+    }
+
     pub(super) fn view_image(&mut self, item: String, index: usize) -> Vec<Effect> {
         if !self
             .state

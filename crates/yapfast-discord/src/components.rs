@@ -352,6 +352,9 @@ fn media(item: &Value, slot: usize, size: (u64, u64), spoiler: bool) -> Option<A
         animated: !video && animated(item),
         shown: Shown::Component(slot),
         spoiler: spoiler || item["flags"].as_u64().unwrap_or_default() & IS_SPOILER != 0,
+        voice: false,
+        waveform: Vec::new(),
+        duration_ms: None,
     })
 }
 
@@ -376,6 +379,9 @@ fn file(component: &Value, slot: usize, spoiler: bool) -> Option<Attachment> {
         animated: false,
         shown: Shown::Component(slot),
         spoiler,
+        voice: false,
+        waveform: Vec::new(),
+        duration_ms: None,
     })
 }
 

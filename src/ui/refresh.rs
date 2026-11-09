@@ -492,6 +492,7 @@ impl Adapter {
         self.show_aside(window);
         self.show_voice(window);
         self.show_video(window);
+        self.show_voice_message(window);
         let state = &self.app.state;
         if changes.selection {
             self.focus_when_ready = state.shows_text() && !state.room_ready;
@@ -4561,6 +4562,24 @@ impl Adapter {
             };
             player.set_time(video_time(at, video.duration_ms).into());
         }
+    }
+
+    fn show_voice_message(&mut self, window: &YapfastWindow) {
+        let player = window.global::<VoicePlayer>();
+        let voice_message = self.app.state.voice_message.as_ref();
+        let Some(voice_message) = voice_message else {
+            player.set_item(SharedString::default());
+            player.set_index(-1);
+            player.set_playing(false);
+            player.set_loading(false);
+            player.set_error(SharedString::default());
+            return;
+        };
+        player.set_item(voice_message.item.clone().into());
+        player.set_index(voice_message.index as i32);
+        player.set_playing(voice_message.playing);
+        player.set_loading(voice_message.loading);
+        player.set_error(voice_message.error.clone().unwrap_or_default().into());
     }
 
     fn show_viewer(&mut self, window: &YapfastWindow) {

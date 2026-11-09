@@ -637,6 +637,27 @@ pub(super) fn message_row_within(
                     index: index as i32,
                     name: attachment.name.clone().into(),
                     detail: detail.into(),
+                    voice: attachment.voice,
+                    waveform: attachment
+                        .waveform
+                        .iter()
+                        .map(|&v| v as f32)
+                        .collect::<Vec<_>>()
+                        .into(),
+                    duration: attachment
+                        .duration_ms
+                        .map(|ms| {
+                            let secs = ms / 1000;
+                            let mins = secs / 60;
+                            let s = secs % 60;
+                            if mins > 0 {
+                                format!("{}:{:02}", mins, s)
+                            } else {
+                                format!("0:{:02}", s)
+                            }
+                        })
+                        .unwrap_or_default()
+                        .into(),
                 }
             })
             .collect()

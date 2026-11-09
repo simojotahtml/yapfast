@@ -1607,6 +1607,9 @@ impl OpenChannel {
                         url: None,
                         spoiler: file.spoiler,
                         video: false,
+                        voice: false,
+                        waveform: Vec::new(),
+                        duration_ms: None,
                     })
                     .collect(),
                 ..Default::default()
@@ -1689,6 +1692,9 @@ impl OpenChannel {
                     },
                     spoiler: attachment.spoiler,
                     video: attachment.video_url.is_some(),
+                    voice: attachment.voice,
+                    waveform: attachment.waveform.clone(),
+                    duration_ms: attachment.duration_ms,
                     gif: super::gifs::favorite_gif(attachment),
                     url: Some(
                         attachment

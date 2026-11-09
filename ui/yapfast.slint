@@ -47,7 +47,7 @@ import { ActionButton, IconButton, PingToggle, DeviceToggle, Avatar, TextField, 
 import { PersonRow, CallLink, CallLinkCard, LinkTouch, SignalIcon, VoiceDock, StreamPip, CallInvite, JoinVoice, ParticipantGrid, CallControls, IncomingCall, SwitchDialog, InputLevel, ShareMenu, ShareScreen, VolumeMenu, Soundboard, SoundRow } from "voice.slint";
 import { ServerRow, RoomRow, StatusDot, ServerRail, ServerHeader, RoomList } from "rail.slint";
 import { StagedFile, StagedTile, Composer, MentionRow, MentionList, EmojiSuggestions, RequestBar } from "composer.slint";
-import { EmojiCell, EmojiRow, EmojiTile, EmojiSection, RailSection, EmojiCard, EmojiCardView, MessageStickerCard, MessageStickerCardView, MessageRow, ReactionToggle, EmojiButton, EmojiPicker, MessageMenu, MessageGallery, MessageStickers, FileCard, MessageContent, EmbedView, BotTag, NoConversation, ConversationStart, HistoryEdge, UnreadBar, PresentBar, ImageViewer, VideoViewer, VideoPlayer, Polls } from "messages.slint";
+import { EmojiCell, EmojiRow, EmojiTile, EmojiSection, RailSection, EmojiCard, EmojiCardView, MessageStickerCard, MessageStickerCardView, MessageRow, ReactionToggle, EmojiButton, EmojiPicker, MessageMenu, MessageGallery, MessageStickers, FileCard, MessageContent, EmbedView, BotTag, NoConversation, ConversationStart, HistoryEdge, UnreadBar, PresentBar, ImageViewer, VideoViewer, VideoPlayer, VoicePlayer, Polls } from "messages.slint";
 import { Choices, SettingsRow, SettingsScreen, AccountSettings, AppearanceSettings, ThemeCard, ThemeColour, VoiceSettings, MessageSettings, NotificationSettings, SoundSettings, AdvancedSettings, DiscordLinkSettings, DiscordSettings, BlockedRow, GameActivitySettings, GameExecutable } from "settings.slint";
 import { MemberRow, MemberActivityRow, ProfileData, BadgeTipCard, ProfileServerRow, MemberPanel, ProfileCard, ProfileModal, ServerCard, RoleCard } from "people.slint";
 import { RequestRow, FriendRow, FriendsScreen, HeaderTab, RequestsScreen, AddFriendDialog } from "friends.slint";
@@ -59,6 +59,7 @@ import { PermissionRow, RoleMemberRow, RoleRow, RoleSwatch, RolesPrompt } from "
 import { BansPrompt, SafetyOption, SafetyPrompt } from "moderation.slint";
 import { ChannelSettingsPrompt, ChannelSettingsScreen, OverwriteRow, ThreeStateRow } from "channel_settings.slint";
 import { MfaChoice, MfaPrompt, MfaDialog } from "mfa.slint";
+import { YapextraPlugin, YapextraScreen } from "yapextra.slint";
 import { FoundRow, PickRow, ThreadRow, HeaderSearch, PinsPopover, ThreadsPopover, AddPeoplePopover, SearchPanel, TopicPopover } from "header.slint";
 import { ThreadPanel, NewThreadPanel } from "thread.slint";
 import { PostTag, PostRow, PostTagChoice, ForumPanel } from "forum.slint";
@@ -74,8 +75,9 @@ export { ServerRow, RoomRow, FolderServer } from "rail.slint";
 export { PictureStore, EmojiAnimations, Motion, AccountLook, NameStyleRow, NameLetter, EffectLayer, NameStyles } from "controls.slint";
 export { ServerTagRow } from "server.slint";
 export { StagedFile, MentionRow } from "composer.slint";
-export { EmojiCell, EmojiRow, EmojiTile, EmojiSection, RailSection, EmojiCard, MessageStickerCard, EmojiFavorites, ReactionChip, ImageCell, FileCell, EmbedField, EmbedFieldRow, EmbedCard, CardButtonStyle, CardButton, TextBlock, CardRowKind, CardRow, ComponentCard, MessageRow, VideoPlayer, PollAction, PollAnswerRow, PollCard, Polls } from "messages.slint";
+export { EmojiCell, EmojiRow, EmojiTile, EmojiSection, RailSection, EmojiCard, MessageStickerCard, EmojiFavorites, ReactionChip, ImageCell, FileCell, EmbedField, EmbedFieldRow, EmbedCard, CardButtonStyle, CardButton, TextBlock, CardRowKind, CardRow, ComponentCard, MessageRow, VideoPlayer, VoicePlayer, PollAction, PollAnswerRow, PollCard, Polls } from "messages.slint";
 export { MemberRow, MemberActivityRow, ProfileRole, ProfileRoleRow, ProfileServerRow, ProfileFriendRow, ProfileBadgeRow, ProfileData, ActivityRow, ActivityClock, ProfileGameRow, ProfileWidgetRow, ProfileWishlistRow, ProfileRecentRow } from "people.slint";
+export { YapextraPlugin } from "yapextra.slint";
 export { RequestRow, FriendRow } from "friends.slint";
 export { ContactRow, PlaceRow, ReactionPill, ReactorRow, PollAnswerDraft } from "dialogs.slint";
 export { FoundRow, PickRow } from "header.slint";
@@ -1160,15 +1162,44 @@ export component YapfastWindow inherits Window {
     in property <color> incoming-tint;
     in property <image> incoming-picture;
     /// The settings show over the window, one section at a time: 0 account, 1 voice and
-    /// audio, 2 messages, 3 notifications, 4 Discord, 5 sounds, 8 game activity.
+    /// audio, 2 messages, 3 notifications, 4 Discord, 5 sounds, 8 game activity,
+    /// 9 Yapextra.
     in-out property <bool> settings-open;
     // Closing settings stops linking Discord there.
     changed settings-open => {
         if !self.settings-open && self.link-phase != 0 { self.cancel-discord-link(); }
         if !self.settings-open { self.camera-testing = false; }
         if !self.settings-open && self.theme-editor { self.cancel-theme(); }
+        if !self.settings-open && self.settings-section == 9 { self.yapextra-close(); }
     }
     in-out property <int> settings-section;
+    // Yapextra: the plugin host's screen, a section of Settings. 0 is the
+    // plugin list, 1 is the selected plugin's page (the message logger
+    // first); the plugin list and logger file status come from Rust.
+    in-out property <bool> yapextra-open; // kept for the adapter: mirrors settings-section == 9
+    in-out property <int> yapextra-page;
+    in property <[YapextraPlugin]> yapextra-plugins;
+    in property <string> yapextra-selected;
+    in property <bool> yapextra-busy;
+    in property <string> yapextra-note;
+    in-out property <bool> logger-enabled;
+    in-out property <bool> logger-edits;
+    in-out property <bool> logger-deletes;
+    in-out property <bool> logger-dms;
+    in-out property <int> logger-format;
+    in property <string> logger-path;
+    in property <string> logger-status;
+    callback yapextra-close;
+    callback yapextra-plugin-opened(string);
+    callback yapextra-plugin-toggled(string, bool);
+    callback yapextra-reload;
+    callback yapextra-back;
+    callback logger-toggled(bool);
+    callback logger-edited(bool, bool, bool);
+    callback logger-format-chosen(int);
+    callback logger-choose-file;
+    callback logger-open-file;
+    callback logger-clear-file;
     /// Preferences people set in the settings; preferences-changed reports any change.
     in-out property <bool> twelve-hour-clock;
     in-out property <bool> clock-seconds;
@@ -4050,6 +4081,29 @@ export component YapfastWindow inherits Window {
             link-discord => { root.link-discord(); }
             link-discord-token(token) => { root.link-discord-token(token); }
             open-discord-captcha => { root.open-discord-captcha(); }
+        }
+        if root.settings-section == 9: YapextraScreen {
+            page: root.yapextra-page;
+            plugins: root.yapextra-plugins;
+            selected-plugin: root.yapextra-selected;
+            busy: root.yapextra-busy; note: root.yapextra-note;
+            logger-enabled <=> root.logger-enabled;
+            logger-edits <=> root.logger-edits;
+            logger-deletes <=> root.logger-deletes;
+            logger-dms <=> root.logger-dms;
+            logger-format <=> root.logger-format;
+            logger-path: root.logger-path; logger-status: root.logger-status;
+            close => { root.settings-open = false; root.yapextra-close(); }
+            plugin-opened(id) => { root.yapextra-plugin-opened(id); }
+            plugin-toggled(id, on) => { root.yapextra-plugin-toggled(id, on); }
+            reload-plugins => { root.yapextra-reload(); }
+            back => { root.yapextra-back(); }
+            logger-toggled(on) => { root.logger-toggled(on); }
+            logger-edited(e, d, dm) => { root.logger-edited(e, d, dm); }
+            logger-format-chosen(index) => { root.logger-format-chosen(index); }
+            logger-choose-file => { root.logger-choose-file(); }
+            logger-open-file => { root.logger-open-file(); }
+            logger-clear-file => { root.logger-clear-file(); }
         }
         if root.settings-section == 4 && root.discord-linked: DiscordSettings {
             matrix-build: root.matrix-build;

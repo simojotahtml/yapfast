@@ -165,6 +165,8 @@ pub(crate) struct Chat {
     /// How loud the last video played, and whether muted: the next plays
     /// the same.
     video_sound: (f32, bool),
+    /// The voice message playing in the open channel.
+    voice_message: Option<crate::voice_message_playback::VoicePlayback>,
 }
 
 impl Drop for Chat {
@@ -210,6 +212,7 @@ impl Chat {
                 saving
             },
             video: None,
+            voice_message: None,
             video_sound: (1.0, false),
         }))
     }
@@ -255,9 +258,31 @@ impl Chat {
                 }
                 return;
             }
+            Command::PlayVoiceMessage {
+                room,
+                item,
+                index,
+            } => {
+                self.play_voice_message(room, item, index, events);
+                return;
+            }
+            Command::VoiceMessage(super::chat::VoiceMessageCommand::Stop) => {
+                self.stop_voice_message(events);
+                return;
+            }
+            Command::VoiceMessage(command) => {
+                if let Some(playback) = &mut self.voice_message {
+                    playback.command(command);
+                    let _ = events.send(Event::VoiceMessage(Some(playback.state.clone())));
+                }
+                return;
+            }
             // A video plays only while its channel is open, or its thread
             // beside it.
-            Command::Open(_) | Command::CloseRoom => self.stop_video(events),
+            Command::Open(_) | Command::CloseRoom => {
+                self.stop_video(events);
+                self.stop_voice_message(events);
+            }
             Command::Aside(ref beside) => {
                 let shown = self.channels.aside.as_ref().map(|aside| &aside.room);
                 if self.video.as_ref().is_some_and(|playback| {
@@ -276,6 +301,66 @@ impl Chat {
             &self.done,
             events,
         );
+    }
+
+    fn stop_voice_message(&mut self, events: &UnboundedSender<Event>) {
+        if self.voice_message.take().is_some() {
+            let _ = events.send(Event::VoiceMessage(None));
+        }
+    }
+
+    fn play_voice_message(
+        &mut self,
+        room: String,
+        item: String,
+        index: usize,
+        events: &UnboundedSender<Event>,
+    ) {
+        self.voice_message = None;
+        let found: Option<(String, Option<u64>)> = self
+            .channels
+            .shown_mut(&room)
+            .and_then(|channel| channel.attachment(&item, index))
+            .and_then(|attachment| {
+                if attachment.voice {
+                    Some((attachment.url.clone().to_string(), attachment.duration_ms))
+                } else {
+                    None
+                }
+            });
+        let Some((url, duration_ms)) = found else {
+            let _ = events.send(Event::VoiceMessage(Some(crate::chat::VoiceMessage {
+                room,
+                item,
+                index,
+                duration_ms: None,
+                loading: false,
+                playing: false,
+                ended: false,
+                error: Some("This voice message is no longer available.".into()),
+            })));
+            return;
+        };
+        let state = crate::chat::VoiceMessage {
+            room: room.clone(),
+            item,
+            index,
+            duration_ms,
+            loading: true,
+            playing: true,
+            ended: false,
+            error: None,
+        };
+        let _ = events.send(Event::VoiceMessage(Some(state.clone())));
+        let discord = self.discord.clone();
+        let url = url.to_string();
+        let playback = crate::voice_message_playback::VoicePlayback::start(
+            state,
+            discord,
+            url,
+            duration_ms,
+        );
+        self.voice_message = Some(playback);
     }
 
     fn stop_video(&mut self, events: &UnboundedSender<Event>) {

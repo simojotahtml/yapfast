@@ -698,6 +698,8 @@ pub struct AppState {
     pub viewer: Option<Viewer>,
     /// The video playing in the selected room.
     pub video: Option<chat::Video>,
+    /// The voice message playing in the selected room.
+    pub voice_message: Option<chat::VoiceMessage>,
     /// The profile card that's open.
     pub profile: Option<ProfileView>,
     pub role: Option<RoleView>,
@@ -1564,6 +1566,10 @@ pub enum Action {
     },
     /// Control the video playing.
     Video(chat::VideoCommand),
+    /// Play an item's voice message at `index`.
+    PlayVoiceMessage { item: String, index: usize },
+    /// Control the voice message playing: `Play`, `Pause` or `Stop`.
+    VoiceMessage(chat::VoiceMessageCommand),
     /// Show the message's next image, or with -1 its previous one, wrapping around.
     StepImage(isize),
     CloseImage,
@@ -3166,6 +3172,13 @@ impl Application {
                 }
                 vec![Effect::Backend(Command::Video(command))]
             }
+            Action::PlayVoiceMessage { item, index } => self.play_voice_message(item, index),
+            Action::VoiceMessage(command) => {
+                if command == chat::VoiceMessageCommand::Stop {
+                    self.state.voice_message = None;
+                }
+                vec![Effect::Backend(Command::VoiceMessage(command))]
+            }
             Action::StepImage(step) => self.step_image(step),
             Action::CloseImage => {
                 self.state.viewer = None;
@@ -3903,6 +3916,16 @@ impl Application {
                             .aside
                             .as_ref()
                             .is_some_and(|aside| aside.room == video.room)
+                });
+            }
+            Event::VoiceMessage(voice_message) => {
+                self.state.voice_message = voice_message.filter(|voice_message| {
+                    self.state.selected.as_ref() == Some(&voice_message.room)
+                        || self
+                            .state
+                            .aside
+                            .as_ref()
+                            .is_some_and(|aside| aside.room == voice_message.room)
                 });
             }
             // Do Not Disturb holds back message notifications, as in Discord.

@@ -3203,6 +3203,57 @@ pub(super) fn bind_callbacks(window: &YapfastWindow, adapter: &Rc<RefCell<Adapte
                 .action(&window, Action::Video(VideoCommand::Volume(volume)));
         }
     });
+    // The voice message playing: started from its card, controlled from it.
+    let player = window.global::<VoicePlayer>();
+    let state = adapter.clone();
+    let weak = window.as_weak();
+    player.on_play(move |item, index| {
+        if let Some(window) = weak.upgrade() {
+            let action = Action::PlayVoiceMessage {
+                item: item.into(),
+                index: index as usize,
+            };
+            state.borrow_mut().action(&window, action);
+        }
+    });
+    let state = adapter.clone();
+    let weak = window.as_weak();
+    player.on_toggle(move || {
+        if let Some(window) = weak.upgrade() {
+            let playing = state
+                .borrow()
+                .app
+                .state
+                .voice_message
+                .as_ref()
+                .is_some_and(|voice_message| voice_message.playing);
+            let command = if playing {
+                yapfast_core::chat::VoiceMessageCommand::Pause
+            } else {
+                yapfast_core::chat::VoiceMessageCommand::Play
+            };
+            state.borrow_mut().action(&window, Action::VoiceMessage(command));
+        }
+    });
+    let state = adapter.clone();
+    let weak = window.as_weak();
+    player.on_save(move |item, index| {
+        // Same save the FileCard does: the adapter opens the file dialog
+        // for the voice attachment's .ogg, then `save_attachment` runs the
+        // backend command. For now the dialog is out of reach here, so this
+        // is a placeholder that tracks play state only; the file card keeps
+        // its own save button.
+        let _ = (item, index);
+    });
+    let state = adapter.clone();
+    let weak = window.as_weak();
+    player.on_stop(move || {
+        if let Some(window) = weak.upgrade() {
+            state
+                .borrow_mut()
+                .action(&window, Action::VoiceMessage(yapfast_core::chat::VoiceMessageCommand::Stop));
+        }
+    });
     let state = adapter.clone();
     let weak = window.as_weak();
     window.on_join_unmuted(move || {

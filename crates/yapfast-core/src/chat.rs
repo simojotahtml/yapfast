@@ -1599,7 +1599,7 @@ impl Picture {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Attachment {
     pub name: String,
     pub size: Option<u64>,
@@ -1615,6 +1615,12 @@ pub struct Attachment {
     /// A video that plays in place of its picture, which is its poster:
     /// [`Command::PlayVideo`].
     pub video: bool,
+    /// A voice message: playable audio, with its waveform and duration.
+    pub voice: bool,
+    /// Its waveform, as Discord sends it: 128 samples, each 0..1.
+    pub waveform: Vec<f32>,
+    /// How long it plays, in milliseconds, when the sender said.
+    pub duration_ms: Option<u64>,
     /// A GIF that can be a favourite: a linked one, or an attached `.gif`.
     pub gif: Option<Gif>,
     /// Its address on the web, which Copy Link and Open Link give, and from
@@ -1643,6 +1649,14 @@ pub enum VideoCommand {
     Stop,
 }
 
+/// What [`Command::VoiceMessage`] tells the voice message playing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VoiceMessageCommand {
+    Play,
+    Pause,
+    Stop,
+}
+
 /// The video playing in the conversation view.
 #[derive(Clone, Debug)]
 pub struct Video {
@@ -1667,6 +1681,19 @@ pub struct Video {
     /// How loud it plays unmuted, from 0 to 1 as the slider stands.
     pub volume: f32,
     /// Why it stopped, for the person.
+    pub error: Option<String>,
+}
+
+/// The voice message playing in the conversation view.
+#[derive(Clone, Debug)]
+pub struct VoiceMessage {
+    pub room: String,
+    pub item: String,
+    pub index: usize,
+    pub duration_ms: Option<u64>,
+    pub loading: bool,
+    pub playing: bool,
+    pub ended: bool,
     pub error: Option<String>,
 }
 
@@ -2147,6 +2174,15 @@ pub enum Command {
     },
     /// Control the video playing.
     Video(VideoCommand),
+    /// Play a voice message: its `.ogg` at `index` in `item`'s attachments.
+    /// One plays at a time; it goes as [`Event::VoiceMessage`].
+    PlayVoiceMessage {
+        room: String,
+        item: String,
+        index: usize,
+    },
+    /// Control the voice message playing: `Play`, `Pause` or `Stop`.
+    VoiceMessage(VoiceMessageCommand),
     /// Look for people to start a DM with; each network answers with
     /// [`Event::People`].
     FindPeople {
@@ -3677,6 +3713,8 @@ impl Command {
             Command::Voice(_) => Route::Voice,
             // Only Discord's videos play for now.
             Command::Discord(_) | Command::Video(_) | Command::Aside(_) => Route::Discord,
+            Command::PlayVoiceMessage { room, .. } => network(room),
+            Command::VoiceMessage(_) => Route::Discord,
             Command::Open(_) | Command::CloseRoom | Command::FindPeople { .. } => Route::Every,
             Command::Send { room, .. }
             | Command::Edit { room, .. }
@@ -3818,8 +3856,12 @@ pub enum Event {
     /// Discord's servers, voice channels and who is in them.
     #[cfg(feature = "discord")]
     Discord(Arc<yapfast_discord::service::Snapshot>),
-    /// The video [`Command::PlayVideo`] plays, as it changes; none once it stops.
+    /// The video [`Command::PlayVideo`] plays, as it changes; none once it
+    /// stops.
     Video(Option<Video>),
+    /// The voice message [`Command::PlayVoiceMessage`] plays, as it
+    /// changes; none once it stops.
+    VoiceMessage(Option<VoiceMessage>),
     /// An image [`Command::ViewImage`] asked for, or why it can't show.
     Image {
         room: String,
