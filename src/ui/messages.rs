@@ -638,12 +638,13 @@ pub(super) fn message_row_within(
                     name: attachment.name.clone().into(),
                     detail: detail.into(),
                     voice: attachment.voice,
-                    waveform: attachment
-                        .waveform
-                        .iter()
-                        .map(|&v| v as f32)
-                        .collect::<Vec<_>>()
-                        .into(),
+                    waveform: ModelRc::new(VecModel::from(
+                        attachment
+                            .waveform
+                            .iter()
+                            .map(|&v| v as f32)
+                            .collect::<Vec<_>>(),
+                    )),
                     duration: attachment
                         .duration_ms
                         .map(|ms| {
